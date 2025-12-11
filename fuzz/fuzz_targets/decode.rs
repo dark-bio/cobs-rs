@@ -1,7 +1,10 @@
+// cobs-rs: fast cobs encoder and decoder
+// Copyright 2025 Dark Bio AG. All rights reserved.
+
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use darkbio_cobs::{decode, decode_buffer};
+use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if data.is_empty() {
