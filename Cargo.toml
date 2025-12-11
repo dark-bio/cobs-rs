@@ -18,6 +18,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 
 [dependencies]
+thiserror = "2"
 
 [dev-dependencies]
 cobs = "0.5"

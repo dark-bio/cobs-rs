@@ -1,17 +1,25 @@
 // cobs-rs: fast cobs encoder and decoder
 // Copyright 2025 Dark Bio AG. All rights reserved.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Error types that can be returned from encoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EncodeError {
+    #[error("buffer too small: have {have} bytes, want {want} bytes")]
     BufferTooSmall { have: usize, want: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Error types that can be returned from decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
+    #[error("empty input")]
     EmptyInput,
+    #[error("buffer too small: have {have} bytes, want {want} bytes")]
     BufferTooSmall { have: usize, want: usize },
+    #[error("zero marker at position {at}")]
     ZeroMarker { at: usize },
+    #[error("zero byte in data at position {at}")]
     ZeroBinary { at: usize },
+    #[error("chunk overflow at position {at}: chunk {marker} exceeds data length {len}")]
     ChunkOverflow { at: usize, marker: u8, len: usize },
 }
 
