@@ -18,10 +18,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 
 [dependencies]
-rand = "0.9"
 
 [dev-dependencies]
 criterion = "0.8"
+rand = "0.9"
 
 [[bench]]
 name = "main"
