@@ -2,8 +2,14 @@
 // Copyright 2025 Dark Bio AG. All rights reserved.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncodeError {
+    BufferTooSmall { have: usize, want: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecodeError {
     EmptyInput,
+    BufferTooSmall { have: usize, want: usize },
     ZeroMarker { at: usize },
     ZeroBinary { at: usize },
     ChunkOverflow { at: usize, marker: u8, len: usize },
@@ -12,7 +18,7 @@ pub enum DecodeError {
 /// Computes the maximum size needed to COBS encode a blind input blob.
 #[inline]
 pub const fn encode_buffer(size: usize) -> usize {
-    size + (size + 253) / 254 + 1
+    size + size.div_ceil(254)
 }
 
 /// Computes the maximum size needed to COBS decode a blind input data.
@@ -27,57 +33,104 @@ pub const fn decode_buffer(size: usize) -> usize {
 }
 
 /// Encodes an opaque data blob with COBS using 0 as the sentinel value. Returns
-/// the number of bytes the encoding took. The output buffer is expected to have
-/// enough space pre-allocated to hold everything.
-pub fn encode(data: &[u8], encoded: &mut [u8]) -> usize {
+/// the number of bytes the encoding took. Returns an error if the output buffer
+/// is too small.
+#[inline]
+pub fn encode(data: &[u8], encoded: &mut [u8]) -> Result<usize, EncodeError> {
+    let want = encode_buffer(data.len());
+    if encoded.len() < want {
+        return Err(EncodeError::BufferTooSmall {
+            have: encoded.len(),
+            want,
+        });
+    }
+    Ok(encode_unsafe(data, encoded))
+}
+
+/// Encodes an opaque data blob with COBS using 0 as the sentinel value. Returns
+/// the number of bytes the encoding took.
+///
+/// # Safety
+/// The caller must ensure `encoded` has at least `encode_buffer(data.len())` bytes.
+#[inline]
+pub fn encode_unsafe(data: &[u8], encoded: &mut [u8]) -> usize {
     // The empty blob is always encoded as 0x01
     if data.is_empty() {
         encoded[0] = 0x01;
         return 1;
     }
+    // Sanity check in debug builds that the user called it correctly
+    debug_assert!(encoded.len() >= encode_buffer(data.len()));
+
     // Start pushing the bytes into the output array, skipping each marker byte
     // and backfilling it later
-    let mut marker_pos = 0usize;
-    let mut output_pos = 1usize;
-    let mut run_length = 1u8;
+    unsafe {
+        let mut marker_pos = 0usize;
+        let mut output_pos = 1usize;
+        let mut run_length = 1u8;
 
-    for &b in data {
-        // If the next byte is non-zero, append it to the output
-        if b > 0 {
-            encoded[output_pos] = b;
-            output_pos += 1;
-            run_length += 1;
+        for &b in data {
+            // If the next byte is non-zero, append it to the output
+            if b > 0 {
+                *encoded.get_unchecked_mut(output_pos) = b;
+                output_pos += 1;
+                run_length += 1;
 
-            // If en entire chunk was non-zero, mark and start the next chunk
-            if run_length == 0xff {
-                encoded[marker_pos] = run_length;
+                // If an entire chunk was non-zero, mark and start the next chunk
+                if run_length == 0xff {
+                    *encoded.get_unchecked_mut(marker_pos) = run_length;
+                    marker_pos = output_pos;
+                    output_pos += 1;
+                    run_length = 1;
+                }
+            } else {
+                // Next byte is zero, terminate the chunk and start the next chunk
+                *encoded.get_unchecked_mut(marker_pos) = run_length;
                 marker_pos = output_pos;
                 output_pos += 1;
                 run_length = 1;
             }
-        } else {
-            // Next byte is zero, terminate the chunk and start the next chunk
-            encoded[marker_pos] = run_length;
-            marker_pos = output_pos;
-            output_pos += 1;
-            run_length = 1;
         }
+        // Terminate any unfinished chunk
+        let last_byte = *data.get_unchecked(data.len() - 1);
+        if run_length > 1 || last_byte == 0 {
+            *encoded.get_unchecked_mut(marker_pos) = run_length;
+        } else {
+            // Just finished at the chunk boundary, revert last open
+            output_pos -= 1;
+        }
+        // Return the number of bytes written to the output stream
+        output_pos
     }
-    // Terminate any unfinished chunk
-    if run_length > 1 || data[data.len() - 1] == 0 {
-        encoded[marker_pos] = run_length;
-    } else {
-        // Just finished at the chunk boundary, revert last open
-        output_pos -= 1;
-    }
-    // Return the number of bytes written to the output stream
-    output_pos
 }
 
 /// Decodes an opaque data blob with COBS using 0 as the sentinel value. Returns
-/// the number of bytes the decoding took. The output buffer is expected to have
-/// enough space pre-allocated to hold everything.
+/// the number of bytes the decoding took. Returns an error if the output buffer
+/// is too small or if the input is malformed.
+#[inline]
 pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+    if data.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
+    if data.len() > 1 {
+        let want = decode_buffer(data.len());
+        if decoded.len() < want {
+            return Err(DecodeError::BufferTooSmall {
+                have: decoded.len(),
+                want,
+            });
+        }
+    }
+    decode_unsafe(data, decoded)
+}
+
+/// Decodes an opaque data blob with COBS using 0 as the sentinel value. Returns
+/// the number of bytes the decoding took.
+///
+/// # Safety
+/// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
+#[inline]
+pub fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     // The empty blob is not a valid COBS encoding
     if data.is_empty() {
         return Err(DecodeError::EmptyInput);
@@ -86,41 +139,48 @@ pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     if data.len() == 1 && data[0] == 0x01 {
         return Ok(0);
     }
+    // Sanity check in debug builds that the user called it correctly
+    debug_assert!(decoded.len() >= decode_buffer(data.len()));
+
     // Consume the input stream one chunk at a time
-    let mut output_pos = 0usize;
-    let mut i = 0usize;
+    unsafe {
+        let mut output_pos = 0usize;
+        let mut i = 0usize;
 
-    while i < data.len() {
-        // Zero cannot be part of a COBS encoded stream
-        let marker = data[i];
-        if marker == 0 {
-            return Err(DecodeError::ZeroMarker { at: i - 1 });
-        }
-        i += 1;
-
-        // If the marker defines an overflowing chunk, abort
-        if i + (marker as usize) - 1 > data.len() {
-            return Err(DecodeError::ChunkOverflow {
-                at: i - 1,
-                marker,
-                len: data.len(),
-            });
-        }
-        // Consume the entire chunk, ensuring there's no zero in it
-        for _ in 1..marker {
-            if data[i] == 0 {
-                return Err(DecodeError::ZeroBinary { at: i });
+        while i < data.len() {
+            // Zero cannot be part of a COBS encoded stream
+            let marker = *data.get_unchecked(i);
+            if marker == 0 {
+                return Err(DecodeError::ZeroMarker { at: i - 1 });
             }
-            decoded[output_pos] = data[i];
-            output_pos += 1;
             i += 1;
+
+            // If the marker defines an overflowing chunk, abort
+            if i + (marker as usize) - 1 > data.len() {
+                return Err(DecodeError::ChunkOverflow {
+                    at: i - 1,
+                    marker,
+                    len: data.len(),
+                });
+            }
+            // Consume the entire chunk, ensuring there's no zero in it
+            for _ in 1..marker {
+                let b = *data.get_unchecked(i);
+                if b == 0 {
+                    return Err(DecodeError::ZeroBinary { at: i });
+                }
+                *decoded.get_unchecked_mut(output_pos) = b;
+                output_pos += 1;
+                i += 1;
+            }
+            // If we had a partial chunk, there must be a zero following
+            if i < data.len() && marker != 0xff {
+                *decoded.get_unchecked_mut(output_pos) = 0;
+                output_pos += 1;
+            }
         }
-        if i < data.len() && marker != 0xff {
-            decoded[output_pos] = 0;
-            output_pos += 1;
-        }
+        Ok(output_pos)
     }
-    Ok(output_pos)
 }
 
 #[cfg(test)]
@@ -131,7 +191,7 @@ mod tests {
     fn test_roundtrip_empty() {
         let data = [];
         let mut enc_buf = [0u8; 1];
-        let len = encode(&data, &mut enc_buf);
+        let len = encode(&data, &mut enc_buf).unwrap();
         assert_eq!(len, 1);
         assert_eq!(enc_buf[0], 0x01);
 
@@ -144,9 +204,9 @@ mod tests {
     fn test_roundtrip_no_zeros() {
         let data = [1, 2, 3, 4, 5];
         let mut enc_buf = [0u8; encode_buffer(5)];
-        let len = encode(&data, &mut enc_buf);
+        let len = encode(&data, &mut enc_buf).unwrap();
 
-        let mut dec_buf = [0u8; 5];
+        let mut dec_buf = [0u8; decode_buffer(encode_buffer(5))];
         let dec_len = decode(&enc_buf[..len], &mut dec_buf).unwrap();
         assert_eq!(&dec_buf[..dec_len], &data);
     }
@@ -155,9 +215,9 @@ mod tests {
     fn test_roundtrip_with_zeros() {
         let data = [0, 1, 0, 2, 0, 0, 3];
         let mut enc_buf = [0u8; encode_buffer(7)];
-        let len = encode(&data, &mut enc_buf);
+        let len = encode(&data, &mut enc_buf).unwrap();
 
-        let mut dec_buf = [0u8; 7];
+        let mut dec_buf = [0u8; decode_buffer(encode_buffer(7))];
         let dec_len = decode(&enc_buf[..len], &mut dec_buf).unwrap();
         assert_eq!(&dec_buf[..dec_len], &data);
     }
@@ -166,9 +226,9 @@ mod tests {
     fn test_roundtrip_254_nonzero() {
         let data: Vec<u8> = (1..=254).collect();
         let mut enc_buf = vec![0u8; encode_buffer(254)];
-        let len = encode(&data, &mut enc_buf);
+        let len = encode(&data, &mut enc_buf).unwrap();
 
-        let mut dec_buf = vec![0u8; 254];
+        let mut dec_buf = vec![0u8; decode_buffer(enc_buf.len())];
         let dec_len = decode(&enc_buf[..len], &mut dec_buf).unwrap();
         assert_eq!(&dec_buf[..dec_len], &data[..]);
     }
@@ -177,9 +237,9 @@ mod tests {
     fn test_roundtrip_255_nonzero() {
         let data: Vec<u8> = (1..=254).chain(std::iter::once(1)).collect();
         let mut enc_buf = vec![0u8; encode_buffer(255)];
-        let len = encode(&data, &mut enc_buf);
+        let len = encode(&data, &mut enc_buf).unwrap();
 
-        let mut dec_buf = vec![0u8; 255];
+        let mut dec_buf = vec![0u8; decode_buffer(enc_buf.len())];
         let dec_len = decode(&enc_buf[..len], &mut dec_buf).unwrap();
         assert_eq!(&dec_buf[..dec_len], &data[..]);
     }
