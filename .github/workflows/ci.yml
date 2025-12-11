@@ -1,0 +1,89 @@
+name: tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macOS-latest ]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Install cargo-hack
+        run: cargo install cargo-hack
+
+      - name: Build individual features
+        run: cargo hack build --each-feature
+
+      - name: Test individual features
+        run: cargo hack test --each-feature
+
+      - name: Test with all features
+        run: cargo test --all-features
+
+  wasm:
+    name: Test on WASM for ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - wasm32-unknown-unknown
+          - wasm32-wasip1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install wasmtime and wasm-bindgen-cli
+        run: |
+          curl https://wasmtime.dev/install.sh -sSf | bash
+          echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Fetch dependencies
+        run: cargo fetch
+
+      - name: Install cargo-hack
+        run: cargo install cargo-hack
+
+      - name: Build individual features
+        run: cargo hack build --each-feature --target ${{ matrix.target }}
+
+      - name: Test individual features
+        if: matrix.target != 'wasm32-unknown-unknown'
+        env:
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime
+        run: cargo hack test --each-feature --target ${{ matrix.target }}
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo clippy --all-features -- -D warnings
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo doc --all-features --no-deps

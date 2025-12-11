@@ -1,0 +1,28 @@
+[package]
+name = "darkbio-cobs"
+version = "0.1.0"
+authors = ["Péter Szilágyi <peter@dark.bio>"]
+description = "Fast COBS encoder and decoder"
+repository = "https://github.com/dark-bio/cobs-rs"
+documentation = "https://docs.rs/darkbio-cobs"
+categories = ["encoding"]
+keywords = ["cobs"]
+license = "BSD-3-Clause"
+edition = "2024"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+
+[dependencies]
+rand = "0.9"
+
+[dev-dependencies]
+criterion = "0.8"
+
+[[bench]]
+name = "main"
+harness = false
