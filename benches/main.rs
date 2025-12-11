@@ -87,5 +87,11 @@ fn bench_decode_unsafe(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_encode, bench_encode_unsafe, bench_decode, bench_decode_unsafe);
+criterion_group!(
+    benches,
+    bench_encode,
+    bench_encode_unsafe,
+    bench_decode,
+    bench_decode_unsafe
+);
 criterion_main!(benches);
