@@ -21,9 +21,11 @@ default = []
 
 [dev-dependencies]
 cobs = "0.5"
-criterion = "0.8"
 rand = "0.9"
 sysinfo = "0.37"
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+criterion = "0.8"
 
 [lib]
 bench = false

@@ -68,7 +68,7 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         env:
           CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime
-        run: cargo hack test --each-feature --target ${{ matrix.target }}
+        run: cargo hack test --each-feature --target ${{ matrix.target }} --lib --tests
 
   format:
     runs-on: ubuntu-latest
