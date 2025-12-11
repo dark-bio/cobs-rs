@@ -13,6 +13,9 @@ libfuzzer-sys = "0.4"
 [dependencies.darkbio-cobs]
 path = ".."
 
+[dependencies.cobs]
+version = "0.5"
+
 [[bin]]
 name = "roundtrip"
 path = "fuzz_targets/roundtrip.rs"
@@ -23,6 +26,20 @@ bench = false
 [[bin]]
 name = "decode"
 path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "roundtrip_differential"
+path = "fuzz_targets/roundtrip_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_differential"
+path = "fuzz_targets/decode_differential.rs"
 test = false
 doc = false
 bench = false

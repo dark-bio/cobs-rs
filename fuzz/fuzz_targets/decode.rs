@@ -7,6 +7,7 @@ use darkbio_cobs::{decode, decode_buffer};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
+    // Skip empty data, it's invalid
     if data.is_empty() {
         return;
     }
