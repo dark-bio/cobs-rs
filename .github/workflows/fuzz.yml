@@ -1,0 +1,30 @@
+name: fuzz
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install nightly toolchain
+        run: rustup install nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Run all fuzzers for 60 seconds each
+        run: |
+          for target in $(cargo +nightly fuzz list); do
+            echo "Fuzzing $target..."
+            cargo +nightly fuzz run "$target" -- -max_total_time=60
+          done

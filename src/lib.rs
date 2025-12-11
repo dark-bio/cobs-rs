@@ -18,7 +18,7 @@ pub enum DecodeError {
 /// Computes the maximum size needed to COBS encode a blind input blob.
 #[inline]
 pub const fn encode_buffer(size: usize) -> usize {
-    size + size.div_ceil(254)
+    size + size.div_ceil(254) + 1
 }
 
 /// Computes the maximum size needed to COBS decode a blind input data.
@@ -151,7 +151,7 @@ pub fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeErr
             // Zero cannot be part of a COBS encoded stream
             let marker = *data.get_unchecked(i);
             if marker == 0 {
-                return Err(DecodeError::ZeroMarker { at: i - 1 });
+                return Err(DecodeError::ZeroMarker { at: i });
             }
             i += 1;
 
