@@ -1,6 +1,6 @@
 [package]
 name = "darkbio-cobs"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Péter Szilágyi <peter@dark.bio>"]
 description = "Fast COBS encoder and decoder"
 repository = "https://github.com/dark-bio/cobs-rs"

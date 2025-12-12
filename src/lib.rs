@@ -30,12 +30,15 @@ pub const fn encode_buffer(size: usize) -> usize {
 }
 
 /// Computes the maximum size needed to COBS decode a blind input data.
-///
-/// Note, 0 is not a valid CODE data size and the method will panic.
 #[inline]
 pub const fn decode_buffer(size: usize) -> usize {
     if size == 0 {
-        panic!("size cannot be zero");
+        // Zero length COBS is invalid. We could panic here, but that makes call
+        // sites brittle when parsing potentially malicious input. We could also
+        // return an error, but that makes the method so much uglier. Returning
+        // zero is safe however, because the caller can still alloc a zero-byte
+        // buffer and the decoder will error anyway.
+        return 0;
     }
     size - 1
 }
