@@ -73,45 +73,63 @@ pub fn encode_unsafe(data: &[u8], encoded: &mut [u8]) -> usize {
     // Sanity check in debug builds that the user called it correctly
     debug_assert!(encoded.len() >= encode_buffer(data.len()));
 
-    // Start pushing the bytes into the output array, skipping each marker byte
-    // and backfilling it later
+    // Consume the input stream one zero delimited run at a time, copying whole
+    // chunks into the output instead of individual bytes
     unsafe {
-        let mut marker_pos = 0usize;
-        let mut output_pos = 1usize;
-        let mut run_length = 1u8;
+        let mut input_pos = 0usize;
+        let mut output_pos = 0usize;
 
-        for &b in data {
-            // If the next byte is non-zero, append it to the output
-            if b > 0 {
-                *encoded.get_unchecked_mut(output_pos) = b;
-                output_pos += 1;
-                run_length += 1;
+        loop {
+            // Look up the next zero, skipping the scanner call for zero runs
+            let run = if *data.get_unchecked(input_pos) == 0 {
+                Some(0)
+            } else {
+                memchr::memchr(0, data.get_unchecked(input_pos..))
+            };
+            // Copy over all the full chunks preceding the zero or the end
+            let mut rem = run.unwrap_or(data.len() - input_pos);
+            while rem >= 254 {
+                *encoded.get_unchecked_mut(output_pos) = 0xff;
+                core::ptr::copy_nonoverlapping(
+                    data.as_ptr().add(input_pos),
+                    encoded.as_mut_ptr().add(output_pos + 1),
+                    254,
+                );
+                input_pos += 254;
+                output_pos += 255;
+                rem -= 254;
+            }
+            if run.is_some() {
+                // Copy over the partial chunk and consume the zero closing it
+                *encoded.get_unchecked_mut(output_pos) = rem as u8 + 1;
+                core::ptr::copy_nonoverlapping(
+                    data.as_ptr().add(input_pos),
+                    encoded.as_mut_ptr().add(output_pos + 1),
+                    rem,
+                );
+                input_pos += rem + 1;
+                output_pos += rem + 1;
 
-                // If an entire chunk was non-zero, mark and start the next chunk
-                if run_length == 0xff {
-                    *encoded.get_unchecked_mut(marker_pos) = run_length;
-                    marker_pos = output_pos;
-                    output_pos += 1;
-                    run_length = 1;
+                // If the zero was the last byte, terminate with an empty chunk
+                if input_pos == data.len() {
+                    *encoded.get_unchecked_mut(output_pos) = 0x01;
+                    return output_pos + 1;
                 }
             } else {
-                // Next byte is zero, terminate the chunk and start the next chunk
-                *encoded.get_unchecked_mut(marker_pos) = run_length;
-                marker_pos = output_pos;
-                output_pos += 1;
-                run_length = 1;
+                // Copy over any partial chunk at the tail. Data ending exactly
+                // on a chunk boundary was fully consumed by the full chunks.
+                if rem > 0 {
+                    *encoded.get_unchecked_mut(output_pos) = rem as u8 + 1;
+                    core::ptr::copy_nonoverlapping(
+                        data.as_ptr().add(input_pos),
+                        encoded.as_mut_ptr().add(output_pos + 1),
+                        rem,
+                    );
+                    output_pos += rem + 1;
+                }
+                return output_pos;
             }
         }
-        // Terminate any unfinished chunk
-        let last_byte = *data.get_unchecked(data.len() - 1);
-        if run_length > 1 || last_byte == 0 {
-            *encoded.get_unchecked_mut(marker_pos) = run_length;
-        } else {
-            // Just finished at the chunk boundary, revert last open
-            output_pos -= 1;
-        }
-        // Return the number of bytes written to the output stream
-        output_pos
     }
 }
 
@@ -153,6 +171,163 @@ pub fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeErr
     // Sanity check in debug builds that the user called it correctly
     debug_assert!(decoded.len() >= decode_buffer(data.len()));
 
+    // A valid COBS stream cannot contain any zero bytes, neither as chunk
+    // markers nor as chunk content, so a single scan up front can validate the
+    // entire input. Streams failing it are handed off to the byte by byte
+    // decoder to pinpoint the error. Clean streams skip all further checks.
+    if memchr::memchr(0, data).is_some() {
+        return decode_scalar(data, decoded);
+    }
+    decode_chunked::<false>(data, decoded)
+}
+
+/// Decodes an opaque data blob with COBS using 0 as the sentinel value,
+/// assuming the input contains no zero bytes, a guarantee usually provided by
+/// a zero delimited framing layer. Skipping the validation scan makes this
+/// faster than `decode`, but violating the assumption yields either a decode
+/// error or garbage output, never memory unsafety. Returns the number of bytes
+/// the decoding took. Returns an error if the output buffer is too small or if
+/// the input is malformed.
+#[inline]
+pub fn decode_nonzero(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+    if data.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
+    if data.len() > 1 {
+        let want = decode_buffer(data.len());
+        if decoded.len() < want {
+            return Err(DecodeError::BufferTooSmall {
+                have: decoded.len(),
+                want,
+            });
+        }
+    }
+    decode_nonzero_unsafe(data, decoded)
+}
+
+/// Decodes an opaque data blob with COBS using 0 as the sentinel value,
+/// assuming the input contains no zero bytes. Returns the number of bytes the
+/// decoding took.
+///
+/// # Safety
+/// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
+#[inline]
+pub fn decode_nonzero_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+    // The empty blob is not a valid COBS encoding
+    if data.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
+    // The empty text is always encoded as 0x01
+    if data.len() == 1 && data[0] == 0x01 {
+        return Ok(0);
+    }
+    // Sanity check in debug builds that the user called it correctly
+    debug_assert!(decoded.len() >= decode_buffer(data.len()));
+
+    decode_chunked::<true>(data, decoded)
+}
+
+/// Decodes an opaque data blob with COBS one chunk at a time, copying whole
+/// chunks into the output instead of individual bytes. With `CHECKED` the
+/// chunk markers are verified to not be zero, without it the caller vouches
+/// that the input contains no zero bytes at all.
+///
+/// # Safety
+/// The caller must ensure `decoded` has at least `decode_buffer(data.len())`
+/// bytes and that `data` is not empty. Without `CHECKED`, the caller must also
+/// ensure that `data` contains no zero bytes.
+#[inline]
+fn decode_chunked<const CHECKED: bool>(
+    data: &[u8],
+    decoded: &mut [u8],
+) -> Result<usize, DecodeError> {
+    unsafe {
+        let mut input_pos = 0usize;
+        let mut output_pos = 0usize;
+
+        // Consume the bulk of the stream with fixed size copies per chunk. The
+        // copies intentionally cover a maximum size no matter the real one,
+        // making them straight inline copies without memcpy calls. Short
+        // chunks copy 16 bytes and anything longer the full 254, keeping the
+        // write amplification of tiny chunk streams in check. Garbage copied
+        // past a chunk is overwritten by the next chunk or falls beyond the
+        // length returned to the caller. The stream cannot end nor overflow
+        // within this loop, so the separator zero can also be written blindly,
+        // dropped again for full chunks by not advancing over it.
+        while input_pos + 255 < data.len() {
+            let marker = *data.get_unchecked(input_pos);
+            if CHECKED && marker == 0 {
+                return Err(DecodeError::ZeroMarker { at: input_pos });
+            }
+            let chunk = marker as usize - 1;
+            input_pos += 1;
+
+            core::ptr::copy_nonoverlapping(
+                data.as_ptr().add(input_pos),
+                decoded.as_mut_ptr().add(output_pos),
+                16,
+            );
+            if chunk > 16 {
+                core::ptr::copy_nonoverlapping(
+                    data.as_ptr().add(input_pos),
+                    decoded.as_mut_ptr().add(output_pos),
+                    254,
+                );
+            }
+            input_pos += chunk;
+            output_pos += chunk;
+
+            *decoded.get_unchecked_mut(output_pos) = 0;
+            output_pos += (marker != 0xff) as usize;
+        }
+        // Consume the stream tail one chunk at a time with exact copies
+        loop {
+            // Read the length marker and ensure the chunk fits the input
+            let marker = *data.get_unchecked(input_pos);
+            if CHECKED && marker == 0 {
+                return Err(DecodeError::ZeroMarker { at: input_pos });
+            }
+            let chunk = marker as usize - 1;
+            input_pos += 1;
+
+            if input_pos + chunk > data.len() {
+                return Err(DecodeError::ChunkOverflow {
+                    at: input_pos - 1,
+                    marker,
+                    len: data.len(),
+                });
+            }
+            // Copy over the entire chunk
+            core::ptr::copy_nonoverlapping(
+                data.as_ptr().add(input_pos),
+                decoded.as_mut_ptr().add(output_pos),
+                chunk,
+            );
+            input_pos += chunk;
+            output_pos += chunk;
+
+            // If the stream is done, so is the decoder
+            if input_pos == data.len() {
+                return Ok(output_pos);
+            }
+            // If we had a partial chunk, there must be a zero following
+            if marker != 0xff {
+                *decoded.get_unchecked_mut(output_pos) = 0;
+                output_pos += 1;
+            }
+        }
+    }
+}
+
+/// Decodes an opaque data blob with COBS one byte at a time. This is the path
+/// for streams known to contain zero bytes, walking the chunks to pinpoint
+/// whether a zero marker, a zero binary or an overflow triggers first.
+///
+/// # Safety
+/// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
+#[cold]
+#[inline(never)]
+fn decode_scalar(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     // Consume the input stream one chunk at a time
     unsafe {
         let mut output_pos = 0usize;
@@ -253,5 +428,144 @@ mod tests {
         let mut dec_buf = vec![0u8; decode_buffer(enc_buf.len())];
         let dec_len = decode(&enc_buf[..len], &mut dec_buf).unwrap();
         assert_eq!(&dec_buf[..dec_len], &data[..]);
+    }
+
+    #[test]
+    fn test_roundtrip_chunk_boundaries() {
+        let sizes: Vec<usize> = if cfg!(miri) {
+            (0..=64)
+                .chain([253, 254, 255, 256, 507, 508, 509, 510, 1021, 1024])
+                .collect()
+        } else {
+            (0..=515)
+                .chain([1021, 1024, 4093, 4096, 8191, 65536])
+                .collect()
+        };
+        for size in sizes {
+            for period in [1usize, 2, 3, 253, 254, 255, 256] {
+                for phase in [0, period - 1] {
+                    let data: Vec<u8> = (0..size)
+                        .map(|i| {
+                            if i % period == phase {
+                                0
+                            } else {
+                                (i % 251 + 1) as u8
+                            }
+                        })
+                        .collect();
+                    roundtrip_reference(&data);
+                }
+            }
+            let data: Vec<u8> = (0..size).map(|i| (i % 251 + 1) as u8).collect();
+            roundtrip_reference(&data);
+        }
+    }
+
+    /// Encodes and decodes a blob with both this crate and the reference cobs
+    /// crate, cross checking all the outputs against one another.
+    fn roundtrip_reference(data: &[u8]) {
+        let mut encoded = vec![0u8; encode_buffer(data.len())];
+        let encoded_len = encode(data, &mut encoded).unwrap();
+
+        let mut reference = vec![0u8; cobs::max_encoding_length(data.len())];
+        let reference_len = cobs::encode(data, &mut reference);
+        assert_eq!(&encoded[..encoded_len], &reference[..reference_len]);
+
+        let mut decoded = vec![0u8; decode_buffer(encoded_len)];
+        let decoded_len = decode(&encoded[..encoded_len], &mut decoded).unwrap();
+        assert_eq!(&decoded[..decoded_len], data);
+
+        let mut nonzero = vec![0u8; decode_buffer(encoded_len)];
+        let nonzero_len = decode_nonzero(&encoded[..encoded_len], &mut nonzero).unwrap();
+        assert_eq!(&nonzero[..nonzero_len], data);
+    }
+
+    #[test]
+    fn test_decode_malformed() {
+        let mut buffer = [0u8; 16];
+
+        assert_eq!(decode(&[], &mut buffer), Err(DecodeError::EmptyInput));
+        assert_eq!(
+            decode(&[0x00], &mut buffer),
+            Err(DecodeError::ZeroMarker { at: 0 })
+        );
+        assert_eq!(
+            decode(&[0x02, 0x41, 0x00], &mut buffer),
+            Err(DecodeError::ZeroMarker { at: 2 })
+        );
+        assert_eq!(
+            decode(&[0x02, 0x00], &mut buffer),
+            Err(DecodeError::ZeroBinary { at: 1 })
+        );
+        assert_eq!(
+            decode(&[0x03, 0x41, 0x00, 0x41], &mut buffer),
+            Err(DecodeError::ZeroBinary { at: 2 })
+        );
+        assert_eq!(
+            decode(&[0x03, 0x41], &mut buffer),
+            Err(DecodeError::ChunkOverflow {
+                at: 0,
+                marker: 3,
+                len: 2
+            })
+        );
+        assert_eq!(
+            decode(&[0x05, 0x41, 0x00, 0x41], &mut buffer),
+            Err(DecodeError::ChunkOverflow {
+                at: 0,
+                marker: 5,
+                len: 4
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_nonzero_malformed() {
+        let mut buffer = [0u8; 128];
+
+        assert_eq!(
+            decode_nonzero(&[], &mut buffer),
+            Err(DecodeError::EmptyInput)
+        );
+        assert_eq!(
+            decode_nonzero(&[0x03, 0x41], &mut buffer),
+            Err(DecodeError::ChunkOverflow {
+                at: 0,
+                marker: 3,
+                len: 2
+            })
+        );
+        // Zero free truncated streams long enough for the chunked decoder must
+        // error the same way as the scanning decoder
+        let mut long = Vec::new();
+        for _ in 0..26 {
+            long.extend_from_slice(&[0x03, 0x41, 0x42]);
+        }
+        long.extend_from_slice(&[0x05, 0x41]);
+        assert_eq!(
+            decode_nonzero(&long, &mut buffer),
+            decode(&long, &mut [0u8; 128])
+        );
+        // Feeding zeroes violates the contract, the result is unspecified but
+        // the call must remain memory safe
+        long[40] = 0;
+        let _ = decode_nonzero(&long, &mut buffer);
+    }
+
+    #[test]
+    fn test_buffer_too_small() {
+        let mut buffer = [0u8; 2];
+
+        assert_eq!(
+            encode(&[1, 2, 3], &mut buffer),
+            Err(EncodeError::BufferTooSmall {
+                have: 2,
+                want: encode_buffer(3)
+            })
+        );
+        assert_eq!(
+            decode(&[0x02, 0x41, 0x02, 0x42], &mut buffer),
+            Err(DecodeError::BufferTooSmall { have: 2, want: 3 })
+        );
     }
 }

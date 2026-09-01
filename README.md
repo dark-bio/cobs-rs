@@ -18,60 +18,76 @@ The report was post-processed to make it denser, but you will see something alon
 
 ```
 Benchmark Environment:
-  OS:        Darwin 26.1
-  Kernel:    25.1.0
+  OS:        Darwin 26.6.2
+  Kernel:    25.6.0
   Arch:      aarch64
   CPU:       Apple M2 Max
   Cores:     12
-  Memory:    35.85 GB / 64.00 GB
+  Memory:    34.21 GB / 64.00 GB
   Build:     release
-  Rustc:     rustc 1.91.1 (ed61e7d7e 2025-11-07)
+  Rustc:     rustc 1.98.0 (88d9e12ae 2026-08-18)
 
-encode/16                   10.035 ns    1.4849 GiB/s
-encode/256                  152.35 ns    1.5649 GiB/s
-encode/4096                 2.5176 µs    1.5152 GiB/s
-encode/65536                40.048 µs    1.5240 GiB/s
-encode/262144               161.20 µs    1.5145 GiB/s
-encode/1048576              646.75 µs    1.5100 GiB/s
-encode/4194304              2.6169 ms    1.4927 GiB/s
+encode/16                       4.7363 ns    3.1461 GiB/s
+encode/256                      8.2581 ns    28.871 GiB/s
+encode/4096                     186.88 ns    20.412 GiB/s
+encode/65536                    2.8347 µs    21.531 GiB/s
+encode/262144                   12.585 µs    19.399 GiB/s
+encode/1048576                  91.854 µs    10.632 GiB/s
+encode/4194304                  461.15 µs    8.4706 GiB/s
 
-decode/16                   6.6440 ns    2.2428 GiB/s
-decode/256                  93.850 ns    2.5404 GiB/s
-decode/4096                 1.6847 µs    2.2644 GiB/s
-decode/65536                25.811 µs    2.3647 GiB/s
-decode/262144               103.24 µs    2.3649 GiB/s
-decode/1048576              410.68 µs    2.3779 GiB/s
-decode/4194304              1.6388 ms    2.3836 GiB/s
+decode/16                       5.4793 ns    2.7195 GiB/s
+decode/256                      16.776 ns    14.212 GiB/s
+decode/4096                     153.48 ns    24.854 GiB/s
+decode/65536                    2.8512 µs    21.407 GiB/s
+decode/262144                   13.617 µs    17.929 GiB/s
+decode/1048576                  54.376 µs    17.959 GiB/s
+decode/4194304                  219.44 µs    17.801 GiB/s
 
-encode_unsafe/16            10.030 ns    1.4856 GiB/s
-encode_unsafe/256           151.94 ns    1.5692 GiB/s
-encode_unsafe/4096          2.4241 µs    1.5736 GiB/s
-encode_unsafe/65536         39.285 µs    1.5536 GiB/s
-encode_unsafe/262144        160.81 µs    1.5182 GiB/s
-encode_unsafe/1048576       633.76 µs    1.5409 GiB/s
-encode_unsafe/4194304       2.5506 ms    1.5315 GiB/s
+encode_unsafe/16                4.7660 ns    3.1266 GiB/s
+encode_unsafe/256               8.2389 ns    28.938 GiB/s
+encode_unsafe/4096              147.34 ns    25.890 GiB/s
+encode_unsafe/65536             3.0086 µs    20.287 GiB/s
+encode_unsafe/262144            12.849 µs    19.001 GiB/s
+encode_unsafe/1048576           81.756 µs    11.945 GiB/s
+encode_unsafe/4194304           447.19 µs    8.7351 GiB/s
 
-decode_unsafe/16            6.5473 ns    2.2759 GiB/s
-decode_unsafe/256           92.253 ns    2.5844 GiB/s
-decode_unsafe/4096          1.5776 µs    2.4181 GiB/s
-decode_unsafe/65536         25.099 µs    2.4318 GiB/s
-decode_unsafe/262144        100.89 µs    2.4200 GiB/s
-decode_unsafe/1048576       403.07 µs    2.4228 GiB/s
-decode_unsafe/4194304       1.6262 ms    2.4021 GiB/s
+decode_unsafe/16                5.4603 ns    2.7290 GiB/s
+decode_unsafe/256               11.390 ns    20.932 GiB/s
+decode_unsafe/4096              149.28 ns    25.554 GiB/s
+decode_unsafe/65536             3.0110 µs    20.271 GiB/s
+decode_unsafe/262144            13.684 µs    17.841 GiB/s
+decode_unsafe/1048576           54.053 µs    18.067 GiB/s
+decode_unsafe/4194304           217.63 µs    17.949 GiB/s
 
-jamesmunns/encode/16        10.572 ns    1.4095 GiB/s
-jamesmunns/encode/256       155.71 ns    1.5312 GiB/s
-jamesmunns/encode/4096      2.6554 µs    1.4366 GiB/s
-jamesmunns/encode/65536     43.878 µs    1.3910 GiB/s
-jamesmunns/encode/262144    164.73 µs    1.4821 GiB/s
-jamesmunns/encode/1048576   670.64 µs    1.4562 GiB/s
-jamesmunns/encode/4194304   2.6897 ms    1.4523 GiB/s
+decode_nonzero/16               3.2584 ns    4.5731 GiB/s
+decode_nonzero/256              7.6394 ns    31.209 GiB/s
+decode_nonzero/4096             110.92 ns    34.392 GiB/s
+decode_nonzero/65536            2.3777 µs    25.669 GiB/s
+decode_nonzero/262144           10.774 µs    22.660 GiB/s
+decode_nonzero/1048576          43.067 µs    22.676 GiB/s
+decode_nonzero/4194304          175.23 µs    22.292 GiB/s
 
-jamesmunns/decode/16        18.433 ns    827.79 MiB/s
-jamesmunns/decode/256       269.78 ns    904.95 MiB/s
-jamesmunns/decode/4096      4.3558 µs    896.80 MiB/s
-jamesmunns/decode/65536     69.413 µs    900.41 MiB/s
-jamesmunns/decode/262144    280.18 µs    892.28 MiB/s
-jamesmunns/decode/1048576   1.1186 ms    893.97 MiB/s
-jamesmunns/decode/4194304   4.5029 ms    888.32 MiB/s
+decode_nonzero_unsafe/16        2.9844 ns    4.9930 GiB/s
+decode_nonzero_unsafe/256       4.1155 ns    57.932 GiB/s
+decode_nonzero_unsafe/4096      109.13 ns    34.954 GiB/s
+decode_nonzero_unsafe/65536     2.3143 µs    26.372 GiB/s
+decode_nonzero_unsafe/262144    10.699 µs    22.820 GiB/s
+decode_nonzero_unsafe/1048576   43.898 µs    22.246 GiB/s
+decode_nonzero_unsafe/4194304   173.02 µs    22.577 GiB/s
+
+jamesmunns/encode/16            9.8637 ns    1.5107 GiB/s
+jamesmunns/encode/256           162.23 ns    1.4696 GiB/s
+jamesmunns/encode/4096          2.4714 µs    1.5435 GiB/s
+jamesmunns/encode/65536         38.318 µs    1.5928 GiB/s
+jamesmunns/encode/262144        154.02 µs    1.5851 GiB/s
+jamesmunns/encode/1048576       617.43 µs    1.5817 GiB/s
+jamesmunns/encode/4194304       2.4702 ms    1.5813 GiB/s
+
+jamesmunns/decode/16            15.250 ns    1000.6 MiB/s
+jamesmunns/decode/256           221.90 ns    1.0744 GiB/s
+jamesmunns/decode/4096          3.5196 µs    1.0839 GiB/s
+jamesmunns/decode/65536         56.295 µs    1.0842 GiB/s
+jamesmunns/decode/262144        226.07 µs    1.0799 GiB/s
+jamesmunns/decode/1048576       909.18 µs    1.0741 GiB/s
+jamesmunns/decode/4194304       3.6190 ms    1.0794 GiB/s
 ```

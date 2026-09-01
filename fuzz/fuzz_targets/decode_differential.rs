@@ -3,7 +3,7 @@
 
 #![no_main]
 
-use darkbio_cobs::{decode, decode_buffer};
+use darkbio_cobs::{decode, decode_buffer, decode_nonzero};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -18,6 +18,24 @@ fuzz_target!(|data: &[u8]| {
     // Decode with local implementation
     let mut local_dec = vec![0u8; decode_buffer(data.len())];
     let local_result = decode(data, &mut local_dec);
+
+    // Zero free inputs uphold the nonzero decoder's contract, it must fully
+    // agree with the scanning decoder on them
+    let mut nonzero_dec = vec![0u8; decode_buffer(data.len())];
+    let nonzero_result = decode_nonzero(data, &mut nonzero_dec);
+    assert_eq!(
+        local_result, nonzero_result,
+        "nonzero decode result mismatch for input {:?}",
+        data
+    );
+    if let Ok(len) = local_result {
+        assert_eq!(
+            &local_dec[..len],
+            &nonzero_dec[..len],
+            "nonzero decode output mismatch for input {:?}",
+            data
+        );
+    }
 
     // Decode with reference cobs crate
     let mut ref_dec = vec![0u8; data.len()];
