@@ -8,7 +8,7 @@ This repository is a *fast* implementation of [Consistent Overhead Byte Stuffing
 
 ## Performance
 
-You can run the benchmarks to see the performance of the safe versions, unsafe versions and the currently most popular Rust `cobs` package (`v0.5.0`).
+You can run the benchmarks to see the performance of the safe versions, unsafe versions and the currently most popular Rust `cobs` package (`v0.5.1`).
 
 ```
 % cargo bench -- --quiet
