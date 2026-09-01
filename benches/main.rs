@@ -2,7 +2,10 @@
 // Copyright 2025 Dark Bio AG. All rights reserved.
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group};
-use darkbio_cobs::{decode, decode_buffer, decode_unsafe, encode, encode_buffer, encode_unsafe};
+use darkbio_cobs::{
+    decode, decode_buffer, decode_nonzero, decode_nonzero_unsafe, decode_unsafe, encode,
+    encode_buffer, encode_unsafe,
+};
 use rand::Rng;
 use sysinfo::System;
 
@@ -11,7 +14,8 @@ fn bench_encode(c: &mut Criterion) {
     let mut group = c.benchmark_group("encode");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut buffer = vec![0u8; encode_buffer(size)];
 
         group.throughput(Throughput::Bytes(size as u64));
@@ -29,7 +33,8 @@ fn bench_encode_unsafe(c: &mut Criterion) {
     let mut group = c.benchmark_group("encode_unsafe");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut buffer = vec![0u8; encode_buffer(size)];
 
         group.throughput(Throughput::Bytes(size as u64));
@@ -47,7 +52,8 @@ fn bench_decode(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut encoded = vec![0u8; encode_buffer(size)];
 
         let len = encode(&data, &mut encoded).unwrap();
@@ -70,7 +76,8 @@ fn bench_decode_unsafe(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode_unsafe");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut encoded = vec![0u8; encode_buffer(size)];
 
         let len = encode(&data, &mut encoded).unwrap();
@@ -88,12 +95,61 @@ fn bench_decode_unsafe(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks the decoding speed of the safe zero free COBS decoder.
+fn bench_decode_nonzero(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decode_nonzero");
+
+    for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
+        let mut encoded = vec![0u8; encode_buffer(size)];
+
+        let len = encode(&data, &mut encoded).unwrap();
+        encoded.truncate(len);
+
+        let mut buffer = vec![0u8; decode_buffer(encoded.len())];
+
+        group.throughput(Throughput::Bytes(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
+            b.iter(|| {
+                decode_nonzero(encoded, &mut buffer).unwrap();
+            });
+        });
+    }
+    group.finish();
+}
+
+/// Benchmarks the decoding speed of the unsafe zero free COBS decoder.
+fn bench_decode_nonzero_unsafe(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decode_nonzero_unsafe");
+
+    for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
+        let mut encoded = vec![0u8; encode_buffer(size)];
+
+        let len = encode(&data, &mut encoded).unwrap();
+        encoded.truncate(len);
+
+        let mut buffer = vec![0u8; decode_buffer(encoded.len())];
+
+        group.throughput(Throughput::Bytes(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
+            b.iter(|| {
+                decode_nonzero_unsafe(encoded, &mut buffer).unwrap();
+            });
+        });
+    }
+    group.finish();
+}
+
 /// Benchmarks the encoding speed of the jamesmunns/cobs encoder.
 fn bench_jamesmunns_encode(c: &mut Criterion) {
     let mut group = c.benchmark_group("jamesmunns/encode");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut buffer = vec![0u8; cobs::max_encoding_length(size)];
 
         group.throughput(Throughput::Bytes(size as u64));
@@ -111,7 +167,8 @@ fn bench_jamesmunns_decode(c: &mut Criterion) {
     let mut group = c.benchmark_group("jamesmunns/decode");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
-        let data: Vec<u8> = rand::rng().random_iter().take(size).collect();
+        let mut data = vec![0u8; size];
+        rand::rng().fill_bytes(&mut data);
         let mut encoded = vec![0u8; cobs::max_encoding_length(size)];
 
         let len = cobs::encode(&data, &mut encoded);
@@ -135,6 +192,8 @@ criterion_group!(
     bench_decode,
     bench_encode_unsafe,
     bench_decode_unsafe,
+    bench_decode_nonzero,
+    bench_decode_nonzero_unsafe,
     bench_jamesmunns_encode,
     bench_jamesmunns_decode
 );
@@ -153,7 +212,7 @@ fn print_system_infos() {
     println!(
         "  OS:        {} {}",
         System::name().unwrap_or_else(|| "Unknown".to_string()),
-        System::os_version().unwrap_or_else(|| "".to_string())
+        System::os_version().unwrap_or_default()
     );
     println!(
         "  Kernel:    {}",

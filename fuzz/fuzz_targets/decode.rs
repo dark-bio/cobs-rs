@@ -3,7 +3,7 @@
 
 #![no_main]
 
-use darkbio_cobs::{decode, decode_buffer};
+use darkbio_cobs::{decode, decode_buffer, decode_nonzero};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -13,4 +13,8 @@ fuzz_target!(|data: &[u8]| {
     }
     let mut dec_buf = vec![0u8; decode_buffer(data.len())];
     let _ = decode(data, &mut dec_buf);
+
+    // The nonzero decoder documents garbage output for zero laced inputs, but
+    // it must remain memory safe on arbitrary data
+    let _ = decode_nonzero(data, &mut dec_buf);
 });

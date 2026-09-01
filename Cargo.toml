@@ -18,15 +18,19 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 
 [dependencies]
+memchr = "2"
 thiserror = "2"
 
 [dev-dependencies]
 cobs = "0.5"
-rand = "0.9"
-sysinfo = "0.37"
+rand = "0.10"
+sysinfo = "0.39"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion = "0.8"
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [lib]
 bench = false
