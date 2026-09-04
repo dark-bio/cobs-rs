@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  schedule:
+    - cron: "0 3 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -99,9 +101,5 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      - name: Run all fuzzers for 60 seconds each
-        run: |
-          for target in $(cargo +nightly fuzz list); do
-            echo "Fuzzing $target..."
-            cargo +nightly fuzz run "$target" -- -max_total_time=60
-          done
+      - name: Run all fuzzers from their corpus
+        run: make fuzz FUZZ_SANITIZER=address
