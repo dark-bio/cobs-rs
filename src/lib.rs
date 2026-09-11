@@ -1,9 +1,22 @@
 // cobs-rs: fast cobs encoder and decoder
 // Copyright 2025 Dark Bio AG. All rights reserved.
 
+// Pull in the README as the package doc
+#![doc = include_str!("../README.md")]
+// Build without the standard library unless the std feature asks for it
+#![cfg_attr(not(feature = "std"), no_std)]
+
+// The tests allocate, so they link the standard library in every configuration
+#[cfg(test)]
+extern crate std;
+
 /// Error types that can be returned from encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EncodeError {
+    /// The output buffer holds `have` bytes but the worst case encoding of the
+    /// input needs `want`, as computed by [`encode_buffer`]. Nothing was
+    /// written. A smaller buffer is refused even if the actual encoding would
+    /// have fit.
     #[error("buffer too small: have {have} bytes, want {want} bytes")]
     BufferTooSmall { have: usize, want: usize },
 }
@@ -11,14 +24,33 @@ pub enum EncodeError {
 /// Error types that can be returned from decoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
+    /// The input is empty. A COBS stream is never shorter than one byte, since
+    /// the empty payload encodes as a single `0x01`.
     #[error("empty input")]
     EmptyInput,
+
+    /// The output buffer holds `have` bytes but the worst case decoding of the
+    /// input needs `want`, as computed by [`decode_buffer`]. Nothing was
+    /// written. Inputs of a single byte skip this check, they never produce
+    /// output.
     #[error("buffer too small: have {have} bytes, want {want} bytes")]
     BufferTooSmall { have: usize, want: usize },
+
+    /// The chunk marker at input offset `at` is zero, which no COBS stream
+    /// contains. Both [`decode`] and [`decode_nonzero`] report it. The latter
+    /// keeps this one check to stay memory safe.
     #[error("zero marker at position {at}")]
     ZeroMarker { at: usize },
+
+    /// A chunk payload contains a zero byte at input offset `at`, which the
+    /// encoder never produces. Only [`decode`] reports it. [`decode_nonzero`]
+    /// trusts the caller and decodes such input to garbage instead.
     #[error("zero byte in data at position {at}")]
     ZeroBinary { at: usize },
+
+    /// The chunk marker at input offset `at` announces `marker - 1` payload
+    /// bytes, which run past the `len` bytes of input. Truncated frames end up
+    /// here.
     #[error("chunk overflow at position {at}: chunk {marker} exceeds data length {len}")]
     ChunkOverflow { at: usize, marker: u8, len: usize },
 }
@@ -55,7 +87,8 @@ pub fn encode(data: &[u8], encoded: &mut [u8]) -> Result<usize, EncodeError> {
             want,
         });
     }
-    Ok(encode_unsafe(data, encoded))
+    // The output was checked to hold the worst case encoding
+    Ok(unsafe { encode_unsafe(data, encoded) })
 }
 
 /// Encodes an opaque data blob with COBS using 0 as the sentinel value. Returns
@@ -64,7 +97,7 @@ pub fn encode(data: &[u8], encoded: &mut [u8]) -> Result<usize, EncodeError> {
 /// # Safety
 /// The caller must ensure `encoded` has at least `encode_buffer(data.len())` bytes.
 #[inline]
-pub fn encode_unsafe(data: &[u8], encoded: &mut [u8]) -> usize {
+pub unsafe fn encode_unsafe(data: &[u8], encoded: &mut [u8]) -> usize {
     // The empty blob is always encoded as 0x01
     if data.is_empty() {
         encoded[0] = 0x01;
@@ -150,7 +183,9 @@ pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
             });
         }
     }
-    decode_unsafe(data, decoded)
+    // The output was checked to hold the worst case decoding, a lone byte
+    // never produces any
+    unsafe { decode_unsafe(data, decoded) }
 }
 
 /// Decodes an opaque data blob with COBS using 0 as the sentinel value. Returns
@@ -159,7 +194,7 @@ pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
 /// # Safety
 /// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
 #[inline]
-pub fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+pub unsafe fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     // The empty blob is not a valid COBS encoding
     if data.is_empty() {
         return Err(DecodeError::EmptyInput);
@@ -202,7 +237,9 @@ pub fn decode_nonzero(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeEr
             });
         }
     }
-    decode_nonzero_unsafe(data, decoded)
+    // The output was checked to hold the worst case decoding, a lone byte
+    // never produces any
+    unsafe { decode_nonzero_unsafe(data, decoded) }
 }
 
 /// Decodes an opaque data blob with COBS using 0 as the sentinel value,
@@ -212,7 +249,7 @@ pub fn decode_nonzero(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeEr
 /// # Safety
 /// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
 #[inline]
-pub fn decode_nonzero_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+pub unsafe fn decode_nonzero_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     // The empty blob is not a valid COBS encoding
     if data.is_empty() {
         return Err(DecodeError::EmptyInput);
@@ -372,6 +409,8 @@ fn decode_scalar(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn test_roundtrip_empty() {

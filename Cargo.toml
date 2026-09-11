@@ -1,25 +1,27 @@
 [package]
 name = "darkbio-cobs"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Péter Szilágyi <peter@dark.bio>"]
 description = "Fast COBS encoder and decoder"
 repository = "https://github.com/dark-bio/cobs-rs"
 documentation = "https://docs.rs/darkbio-cobs"
-categories = ["encoding"]
-keywords = ["cobs"]
+categories = ["encoding", "no-std", "no-std::no-alloc"]
+keywords = ["cobs", "framing", "embedded", "no-std"]
 license = "BSD-3-Clause"
 edition = "2024"
+rust-version = "1.85"
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = []
+default = ["std"]
+std = ["memchr/std", "thiserror/std"]
 
 [dependencies]
-memchr = "2"
-thiserror = "2"
+memchr = { version = "2", default-features = false }
+thiserror = { version = "2", default-features = false }
 
 [dev-dependencies]
 cobs = "0.5"
