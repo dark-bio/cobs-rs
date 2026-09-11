@@ -31,14 +31,14 @@ doc = false
 bench = false
 
 [[bin]]
-name = "roundtrip_differential"
+name = "roundtrip-differential"
 path = "fuzz_targets/roundtrip_differential.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "decode_differential"
+name = "decode-differential"
 path = "fuzz_targets/decode_differential.rs"
 test = false
 doc = false
