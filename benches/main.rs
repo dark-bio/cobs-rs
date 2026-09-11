@@ -3,8 +3,8 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group};
 use darkbio_cobs::{
-    decode, decode_buffer, decode_nonzero, decode_nonzero_unsafe, decode_unsafe, encode,
-    encode_buffer, encode_unsafe,
+    decode, decode_buffer, decode_nonzero, decode_nonzero_unchecked, decode_unchecked, encode,
+    encode_buffer, encode_unchecked,
 };
 use rand::Rng;
 use sysinfo::System;
@@ -29,8 +29,8 @@ fn bench_encode(c: &mut Criterion) {
 }
 
 /// Benchmarks the encoding speed of the unsafe COBS encoder.
-fn bench_encode_unsafe(c: &mut Criterion) {
-    let mut group = c.benchmark_group("encode_unsafe");
+fn bench_encode_unchecked(c: &mut Criterion) {
+    let mut group = c.benchmark_group("encode_unchecked");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
         let mut data = vec![0u8; size];
@@ -40,7 +40,7 @@ fn bench_encode_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &data, |b, data| {
             b.iter(|| {
-                unsafe { encode_unsafe(data, &mut buffer) };
+                unsafe { encode_unchecked(data, &mut buffer) };
             });
         });
     }
@@ -72,8 +72,8 @@ fn bench_decode(c: &mut Criterion) {
 }
 
 /// Benchmarks the decoding speed of the unsafe COBS decoder.
-fn bench_decode_unsafe(c: &mut Criterion) {
-    let mut group = c.benchmark_group("decode_unsafe");
+fn bench_decode_unchecked(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decode_unchecked");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
         let mut data = vec![0u8; size];
@@ -88,7 +88,7 @@ fn bench_decode_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
             b.iter(|| {
-                unsafe { decode_unsafe(encoded, &mut buffer) }.unwrap();
+                unsafe { decode_unchecked(encoded, &mut buffer) }.unwrap();
             });
         });
     }
@@ -120,8 +120,8 @@ fn bench_decode_nonzero(c: &mut Criterion) {
 }
 
 /// Benchmarks the decoding speed of the unsafe zero free COBS decoder.
-fn bench_decode_nonzero_unsafe(c: &mut Criterion) {
-    let mut group = c.benchmark_group("decode_nonzero_unsafe");
+fn bench_decode_nonzero_unchecked(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decode_nonzero_unchecked");
 
     for size in [16, 256, 4096, 65536, 262144, 1048576, 4194304] {
         let mut data = vec![0u8; size];
@@ -136,7 +136,7 @@ fn bench_decode_nonzero_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
             b.iter(|| {
-                unsafe { decode_nonzero_unsafe(encoded, &mut buffer) }.unwrap();
+                unsafe { decode_nonzero_unchecked(encoded, &mut buffer) }.unwrap();
             });
         });
     }
@@ -190,10 +190,10 @@ criterion_group!(
     benches,
     bench_encode,
     bench_decode,
-    bench_encode_unsafe,
-    bench_decode_unsafe,
+    bench_encode_unchecked,
+    bench_decode_unchecked,
     bench_decode_nonzero,
-    bench_decode_nonzero_unsafe,
+    bench_decode_nonzero_unchecked,
     bench_jamesmunns_encode,
     bench_jamesmunns_decode
 );

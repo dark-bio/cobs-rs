@@ -88,7 +88,7 @@ pub fn encode(data: &[u8], encoded: &mut [u8]) -> Result<usize, EncodeError> {
         });
     }
     // The output was checked to hold the worst case encoding
-    Ok(unsafe { encode_unsafe(data, encoded) })
+    Ok(unsafe { encode_unchecked(data, encoded) })
 }
 
 /// Encodes an opaque data blob with COBS using 0 as the sentinel value. Returns
@@ -97,7 +97,7 @@ pub fn encode(data: &[u8], encoded: &mut [u8]) -> Result<usize, EncodeError> {
 /// # Safety
 /// The caller must ensure `encoded` has at least `encode_buffer(data.len())` bytes.
 #[inline]
-pub unsafe fn encode_unsafe(data: &[u8], encoded: &mut [u8]) -> usize {
+pub unsafe fn encode_unchecked(data: &[u8], encoded: &mut [u8]) -> usize {
     // The empty blob is always encoded as 0x01
     if data.is_empty() {
         encoded[0] = 0x01;
@@ -185,7 +185,7 @@ pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     }
     // The output was checked to hold the worst case decoding, a lone byte
     // never produces any
-    unsafe { decode_unsafe(data, decoded) }
+    unsafe { decode_unchecked(data, decoded) }
 }
 
 /// Decodes an opaque data blob with COBS using 0 as the sentinel value. Returns
@@ -194,7 +194,7 @@ pub fn decode(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
 /// # Safety
 /// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
 #[inline]
-pub unsafe fn decode_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+pub unsafe fn decode_unchecked(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
     // The empty blob is not a valid COBS encoding
     if data.is_empty() {
         return Err(DecodeError::EmptyInput);
@@ -239,7 +239,7 @@ pub fn decode_nonzero(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeEr
     }
     // The output was checked to hold the worst case decoding, a lone byte
     // never produces any
-    unsafe { decode_nonzero_unsafe(data, decoded) }
+    unsafe { decode_nonzero_unchecked(data, decoded) }
 }
 
 /// Decodes an opaque data blob with COBS using 0 as the sentinel value,
@@ -249,7 +249,10 @@ pub fn decode_nonzero(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeEr
 /// # Safety
 /// The caller must ensure `decoded` has at least `decode_buffer(data.len())` bytes.
 #[inline]
-pub unsafe fn decode_nonzero_unsafe(data: &[u8], decoded: &mut [u8]) -> Result<usize, DecodeError> {
+pub unsafe fn decode_nonzero_unchecked(
+    data: &[u8],
+    decoded: &mut [u8],
+) -> Result<usize, DecodeError> {
     // The empty blob is not a valid COBS encoding
     if data.is_empty() {
         return Err(DecodeError::EmptyInput);
