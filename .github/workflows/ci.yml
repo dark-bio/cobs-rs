@@ -72,6 +72,26 @@ jobs:
           CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime
         run: cargo hack test --each-feature --target ${{ matrix.target }} --lib --tests
 
+  embedded:
+    name: Build on bare metal for ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - thumbv7em-none-eabi
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Fetch dependencies
+        run: cargo fetch
+
+      - name: Build without the standard library
+        run: cargo build --no-default-features --target ${{ matrix.target }}
+
   format:
     runs-on: ubuntu-latest
     steps:

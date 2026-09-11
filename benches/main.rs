@@ -40,7 +40,7 @@ fn bench_encode_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &data, |b, data| {
             b.iter(|| {
-                encode_unsafe(data, &mut buffer);
+                unsafe { encode_unsafe(data, &mut buffer) };
             });
         });
     }
@@ -88,7 +88,7 @@ fn bench_decode_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
             b.iter(|| {
-                decode_unsafe(encoded, &mut buffer).unwrap();
+                unsafe { decode_unsafe(encoded, &mut buffer) }.unwrap();
             });
         });
     }
@@ -136,7 +136,7 @@ fn bench_decode_nonzero_unsafe(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &encoded, |b, encoded| {
             b.iter(|| {
-                decode_nonzero_unsafe(encoded, &mut buffer).unwrap();
+                unsafe { decode_nonzero_unsafe(encoded, &mut buffer) }.unwrap();
             });
         });
     }

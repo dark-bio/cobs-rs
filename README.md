@@ -4,90 +4,96 @@
 [![](https://docs.rs/darkbio-cobs/badge.svg)](https://docs.rs/darkbio-cobs)
 [![](https://github.com/dark-bio/cobs-rs/workflows/tests/badge.svg)](https://github.com/dark-bio/cobs-rs/actions/workflows/ci.yml)
 
-This repository is a *fast* implementation of [Consistent Overhead Byte Stuffing (COBS)](https://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing). It doesn't do much, but it does it fast. Although there might be eventual fixups and feature expansions for streaming codecs, assume the library is "done".
+This crate is a *fast* implementation of [Consistent Overhead Byte Stuffing (COBS)](https://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing). It doesn't do much, but it does it fast. Although there might be eventual fixups and feature expansions for streaming codecs, assume the library is "done".
+
+The library is `no_std` and never allocates. Disabling the default `std` feature
+only costs runtime SIMD detection on x86_64, where `memchr` then picks SSE2
+instead of AVX2.
+
+## Usage
+
+The codec works on caller provided buffers and returns how many bytes it wrote.
+The two sizing helpers compute the worst case output for an input length, so a
+buffer of that size always fits.
+
+```rust
+use darkbio_cobs::{decode, decode_buffer, encode, encode_buffer};
+
+let data = [0x11, 0x00, 0x22, 0x33, 0x00];
+
+let mut encoded = vec![0u8; encode_buffer(data.len())];
+let len = encode(&data, &mut encoded).unwrap();
+assert_eq!(&encoded[..len], &[0x02, 0x11, 0x03, 0x22, 0x33, 0x01]);
+
+let mut decoded = vec![0u8; decode_buffer(len)];
+let len = decode(&encoded[..len], &mut decoded).unwrap();
+assert_eq!(&decoded[..len], &data);
+```
+
+An encoding never contains a zero byte, so a framing layer can delimit packets
+with zeros and hand each frame to the decoder. Frames from such a layer contain
+no zeros by construction, which lets `decode_nonzero` skip the validation scan.
+Feeding it a zero anyway yields an error or garbage output, never memory
+unsafety.
+
+```rust
+use darkbio_cobs::{decode_buffer, decode_nonzero};
+
+let frame = [0x02, 0x11, 0x03, 0x22, 0x33, 0x01];
+
+let mut decoded = vec![0u8; decode_buffer(frame.len())];
+let len = decode_nonzero(&frame, &mut decoded).unwrap();
+assert_eq!(&decoded[..len], &[0x11, 0x00, 0x22, 0x33, 0x00]);
+```
+
+Malformed input is reported through `DecodeError`, naming the offending
+position. Both directions refuse an undersized output buffer with a
+`BufferTooSmall` error before writing anything.
+
+```rust
+use darkbio_cobs::{decode, DecodeError};
+
+let mut decoded = [0u8; 16];
+let error = DecodeError::ChunkOverflow { at: 0, marker: 3, len: 2 };
+assert_eq!(decode(&[0x03, 0x41], &mut decoded), Err(error));
+```
+
+The `encode_unsafe`, `decode_unsafe` and `decode_nonzero_unsafe` variants skip
+the buffer size checks and keep only a debug assertion, so they are `unsafe` to
+call. The caller must size the buffers with the helpers, anything smaller is
+undefined behavior in release builds.
+
+```rust
+use darkbio_cobs::{encode_buffer, encode_unsafe};
+
+let data = [0x11, 0x00, 0x22];
+
+let mut encoded = vec![0u8; encode_buffer(data.len())];
+let len = unsafe { encode_unsafe(&data, &mut encoded) };
+assert_eq!(&encoded[..len], &[0x02, 0x11, 0x02, 0x22]);
+```
 
 ## Performance
 
 You can run the benchmarks to see the performance of the safe versions, unsafe versions and the currently most popular Rust `cobs` package (`v0.5.1`).
 
-```
+```text
 % cargo bench -- --quiet
 ```
 
-The report was post-processed to make it denser, but you will see something along the lines of:
+Measured on an Apple M2 Max with rustc 1.98.0 in a release build.
 
-```
-Benchmark Environment:
-  OS:        Darwin 26.6.2
-  Kernel:    25.6.0
-  Arch:      aarch64
-  CPU:       Apple M2 Max
-  Cores:     12
-  Memory:    34.21 GB / 64.00 GB
-  Build:     release
-  Rustc:     rustc 1.98.0 (88d9e12ae 2026-08-18)
+|                       | 16 B      | 256 B      | 4 KiB      | 64 KiB     | 256 KiB    | 1 MiB      | 4 MiB      |
+|-----------------------|-----------|------------|------------|------------|------------|------------|------------|
+| encode                | 3.1 GiB/s | 28.9 GiB/s | 20.4 GiB/s | 21.5 GiB/s | 19.4 GiB/s | 10.6 GiB/s | 8.5 GiB/s  |
+| encode_unsafe         | 3.1 GiB/s | 28.9 GiB/s | 25.9 GiB/s | 20.3 GiB/s | 19.0 GiB/s | 11.9 GiB/s | 8.7 GiB/s  |
+| decode                | 2.7 GiB/s | 14.2 GiB/s | 24.9 GiB/s | 21.4 GiB/s | 17.9 GiB/s | 18.0 GiB/s | 17.8 GiB/s |
+| decode_unsafe         | 2.7 GiB/s | 20.9 GiB/s | 25.6 GiB/s | 20.3 GiB/s | 17.8 GiB/s | 18.1 GiB/s | 17.9 GiB/s |
+| decode_nonzero        | 4.6 GiB/s | 31.2 GiB/s | 34.4 GiB/s | 25.7 GiB/s | 22.7 GiB/s | 22.7 GiB/s | 22.3 GiB/s |
+| decode_nonzero_unsafe | 5.0 GiB/s | 57.9 GiB/s | 35.0 GiB/s | 26.4 GiB/s | 22.8 GiB/s | 22.2 GiB/s | 22.6 GiB/s |
+| cobs 0.5.1 encode     | 1.5 GiB/s | 1.5 GiB/s  | 1.5 GiB/s  | 1.6 GiB/s  | 1.6 GiB/s  | 1.6 GiB/s  | 1.6 GiB/s  |
+| cobs 0.5.1 decode     | 1.0 GiB/s | 1.1 GiB/s  | 1.1 GiB/s  | 1.1 GiB/s  | 1.1 GiB/s  | 1.1 GiB/s  | 1.1 GiB/s  |
 
-encode/16                       4.7363 ns    3.1461 GiB/s
-encode/256                      8.2581 ns    28.871 GiB/s
-encode/4096                     186.88 ns    20.412 GiB/s
-encode/65536                    2.8347 µs    21.531 GiB/s
-encode/262144                   12.585 µs    19.399 GiB/s
-encode/1048576                  91.854 µs    10.632 GiB/s
-encode/4194304                  461.15 µs    8.4706 GiB/s
+## License
 
-decode/16                       5.4793 ns    2.7195 GiB/s
-decode/256                      16.776 ns    14.212 GiB/s
-decode/4096                     153.48 ns    24.854 GiB/s
-decode/65536                    2.8512 µs    21.407 GiB/s
-decode/262144                   13.617 µs    17.929 GiB/s
-decode/1048576                  54.376 µs    17.959 GiB/s
-decode/4194304                  219.44 µs    17.801 GiB/s
-
-encode_unsafe/16                4.7660 ns    3.1266 GiB/s
-encode_unsafe/256               8.2389 ns    28.938 GiB/s
-encode_unsafe/4096              147.34 ns    25.890 GiB/s
-encode_unsafe/65536             3.0086 µs    20.287 GiB/s
-encode_unsafe/262144            12.849 µs    19.001 GiB/s
-encode_unsafe/1048576           81.756 µs    11.945 GiB/s
-encode_unsafe/4194304           447.19 µs    8.7351 GiB/s
-
-decode_unsafe/16                5.4603 ns    2.7290 GiB/s
-decode_unsafe/256               11.390 ns    20.932 GiB/s
-decode_unsafe/4096              149.28 ns    25.554 GiB/s
-decode_unsafe/65536             3.0110 µs    20.271 GiB/s
-decode_unsafe/262144            13.684 µs    17.841 GiB/s
-decode_unsafe/1048576           54.053 µs    18.067 GiB/s
-decode_unsafe/4194304           217.63 µs    17.949 GiB/s
-
-decode_nonzero/16               3.2584 ns    4.5731 GiB/s
-decode_nonzero/256              7.6394 ns    31.209 GiB/s
-decode_nonzero/4096             110.92 ns    34.392 GiB/s
-decode_nonzero/65536            2.3777 µs    25.669 GiB/s
-decode_nonzero/262144           10.774 µs    22.660 GiB/s
-decode_nonzero/1048576          43.067 µs    22.676 GiB/s
-decode_nonzero/4194304          175.23 µs    22.292 GiB/s
-
-decode_nonzero_unsafe/16        2.9844 ns    4.9930 GiB/s
-decode_nonzero_unsafe/256       4.1155 ns    57.932 GiB/s
-decode_nonzero_unsafe/4096      109.13 ns    34.954 GiB/s
-decode_nonzero_unsafe/65536     2.3143 µs    26.372 GiB/s
-decode_nonzero_unsafe/262144    10.699 µs    22.820 GiB/s
-decode_nonzero_unsafe/1048576   43.898 µs    22.246 GiB/s
-decode_nonzero_unsafe/4194304   173.02 µs    22.577 GiB/s
-
-jamesmunns/encode/16            9.8637 ns    1.5107 GiB/s
-jamesmunns/encode/256           162.23 ns    1.4696 GiB/s
-jamesmunns/encode/4096          2.4714 µs    1.5435 GiB/s
-jamesmunns/encode/65536         38.318 µs    1.5928 GiB/s
-jamesmunns/encode/262144        154.02 µs    1.5851 GiB/s
-jamesmunns/encode/1048576       617.43 µs    1.5817 GiB/s
-jamesmunns/encode/4194304       2.4702 ms    1.5813 GiB/s
-
-jamesmunns/decode/16            15.250 ns    1000.6 MiB/s
-jamesmunns/decode/256           221.90 ns    1.0744 GiB/s
-jamesmunns/decode/4096          3.5196 µs    1.0839 GiB/s
-jamesmunns/decode/65536         56.295 µs    1.0842 GiB/s
-jamesmunns/decode/262144        226.07 µs    1.0799 GiB/s
-jamesmunns/decode/1048576       909.18 µs    1.0741 GiB/s
-jamesmunns/decode/4194304       3.6190 ms    1.0794 GiB/s
-```
+This library is licensed under the [BSD 3-Clause License](https://github.com/dark-bio/cobs-rs/blob/main/LICENSE).
